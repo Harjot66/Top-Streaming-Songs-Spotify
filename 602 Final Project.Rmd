@@ -1,0 +1,431 @@
+---
+title: "DATA 602 Final Project"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# knitr::opts_chunk$set(fig.width=8)
+```
+
+```{r}
+options(scipen = 999)
+options(repr.plot.width = 25, repr.plot.height =2)
+```
+
+# Authors
+
+Harjot Dhaliwal, Shabbir Khandwala, Gurdeep Panag and Lukas Escoda
+
+Throughout the project's development, all team members made equal and concerted contributions, consistently cross-verifying each other's work, starting from the project's inception and continuing through to the final deliverable.
+
+# Introduction
+
+In our quest to select a compelling and engaging topic for our data science team project, we sought a subject that not only captured our collective interest but also offered a shared foundation of knowledge within our team. As a result, our chosen subject matter centers around Spotify, the globally acclaimed digital music streaming platform. Our project endeavors to delve into the realm of Spotify's top-performing songs in 2023, seeking to analyze and statistically evaluate a series of specific inquiries crafted within the context of this dataset.
+
+Stemming from the desire to put into practice the diverse array of techniques we have acquired throughout the course of this semester, we constructed guiding questions that would enable us to do so. This encompassed the application of statistical tools such as bootstrap simulations, Student's t-test, permutation test, proportion test, chi-squared test, and linear regression, in order to derive definitive answers and ascertain whether to reject or fail to reject the null hypothesis.
+
+To guide our investigation, we have articulated three key questions that piqued our collective curiosity:
+
+Our first intriguing insight we sought out to determine, was if songs featuring multiple artists garner greater popularity when compared to solo artist compositions. This inquiry led us to create two distinct samples by categorizing songs into either a "single artist" or "multiple artist" category. We achieved this by introducing a new categorical variable, "has_multiple_artist," which systematically categorized each song in our dataset. The parameter we would utilize in our comparison would be the mean value of streams for each of these populations.
+
+Our second line of inquiry revolved around investigating whether the proportion of songs with high speechiness (defined as ≥20%, based on the distribution of speechiness) was more prevalent in songs with multiple artists as opposed to those with solo artists. To address this, we introduced a binary column labeled "speechiness_category," which assigned a value of 1 to songs with high speechiness and 0 to songs with low speechiness.
+
+Finally, we set out to uncover any interrelationships among the seven Spotify metrics themselves, with the intention of representing them through a linear model estimate. To accomplish this, we developed a scatter matrix to identify the possible correlations with strong linear associations within the pairings of these metrics.
+
+# Guiding Questions
+
+A formal presentation of these three guiding questions, along with their corresponding statistical hypotheses, is provided as follows:
+
+1.  Does the data indicate that songs featuring multiple artists have more streams than solo artist songs?
+
+```{=html}
+<!-- -->
+```
+a.  Ho: μmultiple,streams - μsolo,streams ≤ 0
+b.  HA: μmultiple,streams - μsolo,streams \> 0
+
+```{=html}
+<!-- -->
+```
+2.  From the data, can we infer that songs featuring multiple artists have greater proportion of high speechiness songs (≥20%) than solo artists?
+
+```{=html}
+<!-- -->
+```
+a.  Ho: pmultiple,highspeechiness - psolo,highspeechiness ≤ 0
+b.  HA: pmultiple,highspeechiness - psolo,highspeechiness \> 0
+
+```{=html}
+<!-- -->
+```
+3.  Is there a linear relationship amongst any of the seven Spotify proprietary metrics?
+
+```{=html}
+<!-- -->
+```
+a.  Ho: B = 0 (Y cannot be expressed as a linear function of X)
+b.  HA: B ≠ 0 (Y can be expressed as a linear function of X)
+
+# Importing Packages
+
+```{r}
+library(binom)
+library(car)
+library(collapsibleTree)
+library(dbplyr)
+library(dplyr)
+library(EnvStats)
+library(ggformula)
+library(ggplot2)
+library(gmodels)
+library(htmltools)
+library(ISLR)
+library(knitr)
+library(lawstat)
+library(markdown)
+library(mosaic)
+library(mosaicData)
+library(nycflights13)
+library(olsrr)
+library(plyr)
+library(purrr)
+library(resampledata)
+library(rmarkdown)
+library(rpart)
+library(rpart.plot)
+library(SDaA)
+library(shiny)
+library(stringi)
+library(tibble)
+library(tidyr)
+library(tidyselect)
+library(tinytex)
+library(yaml)
+library(shiny)
+library(gridExtra)
+library(corrplot)
+library(readxl)
+```
+
+# Importing Data set
+
+```{r}
+dataset = read.csv("cleaned_spotify.csv")
+head(dataset)
+```
+
+# Guiding Question 1
+
+### Hypotheses
+
+$$
+H_0: \mu_{Multiple, Streams} - \mu_{Single, Streams} \leq 0\\
+H_A: \mu_{Multiple, Streams} - \mu_{Single, Streams} > 0
+$$
+
+Do songs with multiple artists get, on average, more streams than songs with single artists?
+
+### Data Exploration and Wrangling
+
+Here we would like to visualize the distribution of the number of songs we have for each number of artists. This helped us decide on which buckets we should use to separate our populations. It was from visually looking at this distribution, that we came to the conclusion that we should separate our 2 populations into "Single" artist songs and "Multiple" artist songs, as there appears to be approximately the same number of songs that are "Single" artist vs. "Multiple" artists.
+
+```{r}
+ggplot(data = dataset, mapping = aes(x = num_artists)) + 
+  geom_histogram(fill="#1DB954", col="black", bins = length(unique(dataset$num_artists))) + 
+  xlab("Number of Artists") + ylab("Count of Songs") + 
+  ggtitle("Distribution of Number of Artists")
+```
+
+Next, we can visualize what the proportion of streams generated based on the number of artists in that song. The graph suggests that majority of the streams do come from single artist productions.
+
+```{r}
+stream.dist = data.frame(aggregate(dataset$streams, list(dataset$num_artists), FUN = sum))
+colnames(stream.dist) = c("num_artists", "total_streams")
+ggplot(data = stream.dist, mapping = aes(x = num_artists, y = total_streams)) + 
+  geom_bar(stat="identity", fill="#1DB954", col="black", width=1) + 
+  xlab("Number of Artists") + ylab("Number of Streams") + 
+  ggtitle("Number of Artists vs. Number of Streams")
+```
+
+Next, we went into dividing our data set into 2 populations, "Single" artist songs and "Multiple" artist songs. For this we we mutated a new column "has_multiple_artists" and labelled each row as "Single" or "Multiple." We also, then went onto creating 2 vectors of the number of streams, with each being filtered by if it has a single artist or multiple artists.
+
+```{r}
+dataset = dataset %>% mutate(has_multiple_artists = ifelse(num_artists == 1, "N", "Y"))
+single.artist = filter(dataset, has_multiple_artists == "N")$streams
+multiple.artist = filter(dataset, has_multiple_artists == "Y")$streams
+```
+
+Next, we checked the distribution of the number of streams generated by Single and Multiple Artists individually to see if they are normally distributed. As we found, these were both heavily right-skewed, and not normal.
+
+```{r}
+ggplot(data = data.frame(single.artist), mapping = aes(x = single.artist)) + 
+  geom_histogram(fill="#1DB954", col="black", bins = 30) + 
+  xlab("Number of Streams") + ylab("Count of Songs") + 
+  ggtitle("Distribution of Number of Streams for Single Artist Songs")
+```
+
+```{r}
+ggplot(data = data.frame(multiple.artist), mapping = aes(x = multiple.artist)) + 
+  geom_histogram(fill="#1DB954", col="black", bins = 30) + 
+  xlab("Number of Streams") + ylab("Count of Songs") + 
+  ggtitle("Distribution of Number of Streams for Multiple Artist Songs")
+```
+
+This can further be confirmed using Normal Probability Plots on the number of streams feature. As we can see, both of the distributions are not normal, therefore, we would have to leverage the permutation test to test if this result was due to randomness.
+
+```{r}
+ggplot(data = data.frame(single.artist), mapping = aes(sample = single.artist)) + stat_qq(col="#1DB954") + stat_qq_line(col="purple") + xlab("theoretical") + ylab("sample") + ggtitle("Normal Probability Plot of Number of Streams for Single Artists")
+```
+
+```{r}
+ggplot(data = data.frame(multiple.artist), mapping = aes(sample = multiple.artist)) + 
+  stat_qq(col="#1DB954") + stat_qq_line(col="purple") + xlab("theoretical") + ylab("sample") +
+  ggtitle("Normal Probability Plot of Number of Streams for Multiple Artists")
+```
+
+### Permutation Test
+
+We are conducting the permutation test of randomness on this data set to check if our current observation is significantly different enough than what we would expect if it was due solely to randomness, to the point that we can reject the null hypothesis. We utilized 2999 simulations of randomness to conduct this test. We found that our p-value was greater than 0.05, therefore we fail to reject the null hypothesis and would conclude that our observation was due to randomness. We would conclude statistically, on average that songs with multiple artists do not get a higher number of streams than songs with a single artist.
+
+```{r}
+num.trials = 2999
+obs.diff = mean(multiple.artist) - mean(single.artist)
+combined.samples = c(single.artist, multiple.artist)
+perm.results = numeric(num.trials)
+for (i in 1:num.trials) {
+  indices = sample(length(combined.samples), length(multiple.artist), replace = FALSE)
+  perm.results[i] = mean(combined.samples[indices]) - mean(combined.samples[-indices])
+}
+ggplot(data = data.frame(perm.results), mapping = aes(x = perm.results)) + 
+  geom_histogram(fill="#1DB954", col="black", bins = 30) + 
+  geom_vline(xintercept = obs.diff, col="purple") + 
+  xlab("Permutation Test") + ylab("Count of Songs") + 
+  ggtitle("Distribution of Permution Test")
+```
+
+```{r}
+(sum(perm.results >= obs.diff) + 1) / (num.trials + 1)
+```
+
+### Conventional Method Using Log Scaling
+
+Alternately, we can apply log scaling in the hopes of making the sample tend towards being normal. When we log the number of streams data for each population. After this transformation, the normal probability plots for both populations do tend to be normal. Therefore, we can now apply a student's t test on the logged values of the streams generated by the songs. After conducting this test our p-value is greater than 0.05. This supports our null hypothesis and our conclusion from the earlier permutation test. Additionally, we have calculated the 2 individual 95% confidence intervals for each individual population. These show that the 2 intervals do not overlap, and the interval for the number of streams for the "Single" artist population is greater than the one for "Multiple" artists.
+
+Note: As a result of log scaling, we cannot compute the confidence interval for difference of sample mean.
+
+```{r}
+ggplot(data = filter(dataset, has_multiple_artists == "N"), mapping = aes(sample = log(streams))) + 
+  stat_qq(col="#1DB954") + stat_qq_line(col="black") + 
+  xlab("theoretical") + ylab("sample") + 
+  ggtitle("Normal Probability Plot for Logged Number of Streams for Single Artist Songs")
+```
+
+```{r}
+ggplot(data = filter(dataset, has_multiple_artists == "Y"), mapping = aes(sample = log(streams))) + 
+  stat_qq(col="#1DB954") + stat_qq_line(col="black") + 
+  xlab("theoretical") + ylab("sample") + 
+  ggtitle("Normal Probability Plot for Logged Number of Streams for Multiple Artist Songs")
+```
+
+```{r}
+t.test(log(multiple.artist), log(single.artist), alternative = "greater", mu = 0, conf.level = 0.95)
+```
+
+```{r}
+print("95% Confidence Interval for Number of Streams for Single Artist Songs:")
+exp(t.test(log(single.artist), conf.level = 0.95)$conf.int[1:2])
+print("95% Confidence Interval for Number of Streams for Multiple Artist Songs:")
+exp(t.test(log(multiple.artist), conf.level = 0.95)$conf.int[1:2])
+```
+
+# Guiding Question 2
+
+### Hypotheses
+
+$$
+H_0: p_{Multiple, High Speechiness} - p_{Single, High Speechiness} \leq 0\\
+H_A: p_{Multiple, High Speechiness} -p_{Single, High Speechiness} > 0
+$$
+
+Do songs with multiple artists have, on average, a higher proportion of high speechiness ($\geq 20%$) songs than songs with single artists?
+
+### Data Exploration and Wrangling
+
+Here, we plotted a distribution of the number of songs for each speechiness score, to determine what would be an appropriate cutoff value for low speechiness songs vs. high speechiness songs. From visually inspecting this distribution, it appears a reasonable cutoff value would be 20% for the speechiness score. Therefore, we mutated a new column called speechiness_category with binary values with 1 signifying a speechiness score of 20% or more (high speechiness) and 0 representing any speechiness values of less than 20.
+
+```{r}
+ggplot(data = dataset, mapping = aes(x = speechiness)) + 
+  geom_histogram(fill = "#1DB954", col = "black", bins=30) + 
+  xlab("Speechiness") + ylab("Count of Songs") + ggtitle("Distribution of Speechiness")
+```
+
+```{r}
+dataset = dataset %>%
+  mutate(speechiness_category = ifelse(speechiness >= 20, 1, 0))
+```
+
+Next, we created 2 new dataframes for each population by filtering the current data set dataframe for single artist songs and multiple artist songs.
+
+```{r}
+single.artist = filter(dataset, has_multiple_artists == "N")
+multiple.artist = filter(dataset, has_multiple_artists == "Y")
+```
+
+### Agresti-Coull Method
+
+Here we conducted an Agrest-Coull proportion test in order to retrieve the p-value and confidence interval for our proportion test. We received a p-value of less than 0.05, meaning that we reject our null hypothesis and conclude that the proportion of high speechiness songs is higher for songs with multiple artists compared to songs with a single artist. This is also supported by our 95% confidence interval, which does not straddle 0.
+
+```{r}
+x.multiple = sum(multiple.artist$speechiness_category)
+x.single = sum(single.artist$speechiness_category)
+n.multiple = length(multiple.artist$speechiness_category)
+n.single = length(single.artist$speechiness_category)
+
+prop.test(c(x.multiple + 1, x.single + 1), c(n.multiple + 2, n.single + 2), alternative = "greater", conf.level = 0.95, correct = FALSE)
+```
+
+### Bootstrap Method
+
+Here, we decided to also conduct a bootstrap test with 3000 simulation to test the same hypothesis. Here we can see that the 95% confidence interval of the difference of proportions does not straddle 0, and is greater, therefore this supports our findings from the Agresti-Coull test.
+
+```{r}
+num.trials = 3000
+phat.single = numeric(num.trials)
+phat.multiple = numeric(num.trials)
+phat.difference = numeric(num.trials)
+for (i in 1:num.trials){
+  phat.single[i] = mean(sample(single.artist$speechiness_category, n.single, replace = TRUE))
+  phat.multiple[i] = mean(sample(multiple.artist$speechiness_category, n.single, replace = TRUE))
+  phat.difference[i] = phat.multiple[i] - phat.single[i]
+}
+conf.limits = qdata(~phat.difference, p = c(0.025, 0.975), data = data.frame(phat.difference))
+ggplot(data = data.frame(phat.difference), mapping = aes(x = phat.difference)) + 
+  geom_histogram(fill = "#1DB954", col = "black", bins=30) +
+  geom_vline(xintercept = mean(phat.difference)) +
+  geom_vline(xintercept = conf.limits[1], color = "purple") + 
+  geom_vline(xintercept = conf.limits[2], color = "purple") + 
+  xlab("Values of Bootstrapped Difference of Proportion") + ylab("Count of Songs") + 
+  ggtitle("Distribution of Bootstrap Statistic: Difference of Proportion")
+```
+
+```{r}
+qdata(~phat.difference, p = c(0.025, 0.975), data = data.frame(phat.difference))
+```
+
+# Guiding Question 3
+
+### Hypotheses
+
+$H_0: B = 0$
+
+$H_A: B \neq 0$
+
+Is it possible to model the relationship between song acousticness and energy as linear model?
+
+### Data Exploration and Wrangling
+
+Creating a scatter plot to get an overview of the relationships between the different Spotify metrics. From here we can visually tell that there appears to be somewhat of a reasonably strong negative linear relationship between acousticness and energy, while the other scatter plots do not appear to have much of a strong linear relationship. It is due to this we will zoom in and look at the scatter plot of acousticness vs. energy closer.
+
+```{r}
+dataset.heatmap = dataset[, c("danceability", "valence", "energy", "acousticness", "instrumentalness", "liveness", "speechiness")]
+pairs(dataset.heatmap, main = "Scatterplot Matrix", pch = 19, col = "#1DB954", cex=0.2, upper.panel = NULL)
+```
+
+As we can see by looking into this scatter plot closer, there does appear to be somewhat of a strong negative linear relationship between these 2 variables and we will go ahead with building a linear model with these variables.
+
+```{r}
+ggplot(dataset, aes(x=acousticness, y=energy)) + geom_point(color="#1DB954") + xlab("Acousticness") + ylab("Energy") + ggtitle("Acousticness vs. Energy")
+```
+
+Here we built the linear model, and discovered that the linear model for these 2 variables is:
+
+$$
+energy = -0.3680*acousticness + 74.2529
+$$
+
+This negative coefficient indicates that, on average, for every 1 unit increase in acousticness, energy decreases by 0.36798 units. The p-values of both the y-intercept and the slope coefficient are below 0.05, meaning that these are both statistically different than 0. The F-test of linear appropriateness also gives us a p-value of less than 0.05, meaning that this model can be appropriately modeled by a linear model, as we reject the null hypothesis and conclude that $B \neq 0$. We also discovered that the coefficient of determination of the model is 0.3335, meaning that approximately 33.35% of the variability in energy can be explained by its relationship with acousticness.
+
+```{r}
+predict.energy = lm(energy ~ acousticness, data = dataset)
+summary(predict.energy)
+```
+
+As we can see the 95% confidence interval for the slope coefficient does not straddle 0, further supporting our prior conclusion.
+
+```{r}
+confint(predict.energy, "acousticness", conf.level=0.95)
+```
+
+Next we, need to check for 2 more conditions of linear appropriateness which are the normality of the residuals and homoscedasticity.
+
+### Condition 1: Normality of the Residuals
+
+Here we tested whether our data held the condition of "normality of residuals." It appears that this condition is held by our data as evidenced by our plot.
+
+```{r}
+acousticness = dataset$acousticness
+energy = dataset$energy
+predicted.acousticness = predict.energy$fitted.values
+eis.energy = predict.energy$residuals
+se.predictenergy = summary(predict.energy)$sigma
+standardized.eis = (eis.energy)/(se.predictenergy*sqrt(1 - hatvalues(predict.energy)))
+diagnostic.df = data.frame(acousticness, energy, predicted.acousticness, eis.energy, se.predictenergy, standardized.eis)
+
+ggplot(data = diagnostic.df, mapping = aes(sample = standardized.eis)) + 
+  stat_qq(col="#1DB954") + stat_qq_line(col="purple") + 
+  xlab("theoretical") + ylab("sample") + 
+  ggtitle("Normal Probability Plot of the Standardized Residuals")
+```
+
+```{r}
+ggplot(diagnostic.df, aes(x = standardized.eis)) + 
+  geom_histogram(binwidth = 0.4, fill = "#1DB954", color = "black") + 
+  xlab("Standardized Residuals") + ylab("Frequency") +
+  ggtitle("Distribution of Standardized Residuals")
+```
+
+### Condition 2: Homoscedasticity
+
+Here we tested whether our data held the condition of "homoscedasticity." It appears that this condition is also held by our data as evidenced by our plot.
+
+```{r}
+ggplot(data = diagnostic.df, aes(x=acousticness, y=standardized.eis)) + 
+  geom_point(col = "#1DB954") + geom_hline(yintercept=0, color="purple") + 
+  xlab("Acousticness") + ylab("Standardized Residuals") +
+  ggtitle("Homoscedasticity")
+```
+
+### Plot
+
+Since all of our conditions for linearity were met, we are going to plot the linear regression.
+
+```{r}
+ggplot(dataset, aes(x=acousticness, y=energy)) + 
+  geom_point(col = "#1DB954") + geom_smooth(method="lm", color="purple", se=FALSE) + 
+  xlab("Acousticness") + ylab("Energy") +
+  ggtitle("Linear Regression Plot of Acousticness vs. Energy")
+```
+
+### Double Checking
+
+To verify that the 2 variables we chose to model were the best ones we could have picked, we are going to plot a heat map of correlations to verify if there are other stronger relationship between variables. It appears this was the strongest relationship we could have picked from these metrics, therefore we likely got the best linear model out of modeling these metrics against eachother.
+
+```{r}
+correlation.matrix = cor(dataset.heatmap)
+corrplot(correlation.matrix, method = "number", type = "upper", number.cex = 0.8, col = colorRampPalette(c("#1DB954", "white", "black"))(100), tl.col = "black", tl.cex=0.7)
+```
+
+# Conclusion
+
+In conclusion, our data exploration and analysis have unveiled essential findings and insights within the realm of Spotify's top-performing songs in 2023, guided by our three fundamental questions.
+
+For our first question, the results of our hypothesis testing led to an intriguing revelation: we could not reject the null hypothesis, indicating that, on average, solo songs appeared to have stream counts equal to or surpassing those featuring two or more artists. This finding highlights the intriguing possibility that multiple artists may not guarantee a higher stream count, potentially reshaping how we perceive the success of solo artist songs and multi-artist collaborations.
+
+In response to our second question, the data and statistical tests have provided compelling evidence. Songs with multiple artists, on average, tend to exhibit a higher proportion of high speechiness scores compared to songs with a single artist. While our analysis demonstrates a correlation, the complex dynamics of causation may warrant further exploration.
+
+Our examination of the seven Spotify proprietary metrics, as addressed in our third question, has brought to light a notable negative linear relationship between acousticness and energy. Our rigorous assessment of underlying assumptions, including normality of residuals and homoscedasticity, confirms the reliability of our linear model. The results of the F-test further underscore the statistical significance of our model, affirming the influential role of 'acousticness' on 'energy.' Finally, our heatmap correlation analysis identified a single robust relationship among the metrics examined.
+
+As we reflect on these discoveries, we recognize the profound complexity and diversity of top-streaming music in today's world. Our exploration of multi-artist collaborations, the intricacies of Spotify's audio metrics, and the acknowledgement for external factors to influence song performance prompts us to envision a wealth of untapped possibilities in the field of music analysis. We believe that research in this field could explore the influence of external factors such as marketing strategies, artist popularity, or cultural events on the streaming performance of songs. Further investigation into the dynamic nature of success on streaming platforms and its impact on artists' decision-making processes could provide invaluable insights for the music industry. Our journey into the world of data-driven music insights has just begun, and we eagerly anticipate the path ahead, teeming with opportunities for deeper exploration and ground-breaking discoveries.
