@@ -1,4 +1,4 @@
-# Top-Streaming-Songs-Spotify
+# Top Streaming Songs Spotify
 
 ### Introduction
 Our subject domain is the digital music streaming industry, which includes platforms such as Spotify, Apple Music, Deezer, etc. We have decided to specifically explore this data through the lens of Spotify’s metrics that were collected and assembled into our chosen dataset. We are interested in demystifying the top-performing songs on Spotify’s platform in correlation with different attributes of the dataset (i.e. popularity with a particular or combination of attributes, amongst attributes themselves, etc.) The significance of this problem is that Spotify has multitudes of data which can be shared with artists in order to improve their likelihood of creating a top streaming song (which may be different than a song that does well in in-person concert environments) by giving creators valuable insights into how top performing songs are formulated and assembled. This in turn will help growing artists and increase the likelihood of artists who use data-based decision making to create top streaming music.
